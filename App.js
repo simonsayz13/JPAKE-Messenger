@@ -9,7 +9,6 @@ import { createStackNavigator, createAppContainer } from 'react-navigation'
 
 const AppStackNavigator = createStackNavigator(
   {
-    //kkkkkk
   Login: {screen:Login},
   CreateAccount: {screen:CreateAccount},
   Chat: {screen:Chat},

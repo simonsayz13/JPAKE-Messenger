@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, FlatList, YellowBox, AsyncStorage } from 'react-native';
-import { ListItem, SearchBar, Badge } from "react-native-elements"
+import { ListItem, SearchBar } from "react-native-elements"
 import * as firebaseHandler from '../Firebase/FirebaseHandler'
 
 export default class Contacts extends React.Component {
@@ -20,17 +20,18 @@ export default class Contacts extends React.Component {
 
   get user() {
   	return {
+      _id: firebaseHandler.uid(),
   		name: firebaseHandler.userName(),
       email: firebaseHandler.userEmail(),
       avatar: '',
+
   	}
   }
 
   onPressItem = (item) => {
-
-    const fromUser = {...this.user, toname:item.name, toemail: item.email.toLowerCase()}
       this.props.navigation.navigate('Chat', {
-        user: fromUser,
+        user: this.user,
+        toName: item.name,
         toEmail: item.email.toLowerCase(),
     })
 
@@ -129,12 +130,6 @@ export default class Contacts extends React.Component {
     return (
       <View
         style={{
-          //height: 1,
-          //backgroundColor: '#CED0CE',
-          //paddingVertical: 20,
-          //borderTopWidth: 1,
-          //borderColor: "#CED0CE",
-
           height: 1,
           backgroundColor: "#CED0CE",
         }}
