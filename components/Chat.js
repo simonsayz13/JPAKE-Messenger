@@ -1,19 +1,18 @@
 import React from 'react';
-import { YellowBox, AsyncStorage } from 'react-native';
+import { YellowBox} from 'react-native';
+import {HeaderBackButton} from 'react-navigation'
 import { GiftedChat } from 'react-native-gifted-chat';
 import * as firebasehandler from '../Firebase/FirebaseHandler';
 import * as asyncstore from '../AsyncStorage/Store';
+import CryptoJS from "crypto-js";
 
 export default class Chat extends React.Component {
-
-  static navigationOptions = {
-    title: 'Chat',
-  }
 
 	constructor(props) {
     super(props);
     YellowBox.ignoreWarnings(['Setting a timer','Encountered two children'])
     console.disableYellowBox = true;
+    console.log()
   }
 
   state = {
@@ -23,9 +22,16 @@ export default class Chat extends React.Component {
   }
 
 	static navigationOptions = ({ navigation }) => ({
- 	 	title: navigation.state.params.toName,
+      title: navigation.state.params.toUserName,
+      headerLeft: (
+        <HeaderBackButton
+          title="Contacts"
+          onPress={() => navigation.navigate('Contacts')}
+        />
+      ),
   });
-  
+
+  // Get function to retrieve current information
   get user() {
     return {
       _id: this.props.navigation.state.params.user._id,
@@ -34,15 +40,17 @@ export default class Chat extends React.Component {
       avatar: this.props.navigation.state.params.user.avatar,
     };
   }
+  
+  // Render the GiftedChat UI and display messages from the state array "messages"
 	render() {
 	  return (
 	    <GiftedChat
         user={this.user}
         messages={this.state.messages}
-        toEmail={this.props.navigation.state.params.toEmail}
         user_id={this.user._id}
-        fromKey={this.props.navigation.state.params.user.name+':'+this.props.navigation.state.params.toName}
-        toKey={this.props.navigation.state.params.toName+':'+this.props.navigation.state.params.user.name}
+        toUserID = {this.props.navigation.state.params.toUserID}
+        userStore={this.user._id+':'+this.props.navigation.state.params.toUserID}
+        sessionKey={this.props.navigation.state.params.sessionKey}
         onSend={firebasehandler.sendDirect}
         alwaysShowSend={true}
         showUserAvatar={false}
@@ -50,36 +58,42 @@ export default class Chat extends React.Component {
 	  );
   }
   
+  // Call function to synchronise local storage against firebase database and display new messages if requried
   readLocalData() {
-    const fromUser = this.props.navigation.state.params.user.name+':'+this.props.navigation.state.params.toName
-    const fromEmail = this.props.navigation.state.params.user.email
-    const toEmail = this.props.navigation.state.params.toEmail
+    const fromKey = this.user._id
+    const toKey = this.props.navigation.state.params.toUserID
+    const userStore = this.user._id+':'+this.props.navigation.state.params.toUserID
+    const key = this.props.navigation.state.params.sessionKey
 
-    firebasehandler.readData(fromUser, fromEmail, toEmail, function(message) {
+    firebasehandler.readData(userStore, fromKey, toKey, key ,function(message) {      
       this.setState(previousState => ({
         messages: GiftedChat.append([], message.reverse()),
       }))
     }.bind(this))
-    
   }
-  //Listen To Database download new data, 
+
+  //Listen to database retrieve, store and display new message, 
   listenToDatabase () {
-    const fromUser = this.props.navigation.state.params.user.name+':'+this.props.navigation.state.params.toName
-    const fromEmail = this.props.navigation.state.params.user.email
-    const toEmail = this.props.navigation.state.params.toEmail
-
-    firebasehandler.ListenForMessages(fromEmail, toEmail, function(message) {
-      asyncstore.retrieveItem(fromUser).then(messageArray => {
-
+    const userStore = this.user._id+':'+this.props.navigation.state.params.toUserID
+    const fromKey = this.user._id
+    const toKey = this.props.navigation.state.params.toUserID
+    const sessionKey = this.props.navigation.state.params.sessionKey
+    firebasehandler.ListenForMessages(fromKey, toKey, function(message) {
+      asyncstore.retrieveItem(userStore).then(messageArray => {
         if (messageArray == null || (message.createdAt != messageArray[messageArray.length-1].createdAt)) {
-
+          var decrypted = CryptoJS.AES.decrypt(message.text.toString(), sessionKey)
+          var plainText = decrypted.toString(CryptoJS.enc.Utf8)
+          const newMessage = {
+            _id: message._id,
+            createdAt: message.createdAt,
+            text: plainText,
+            user: message.user,
+          }
           this.setState(previousState => ({
-            messages: GiftedChat.append(previousState.messages, message),
+            messages: GiftedChat.append(previousState.messages, newMessage),
           }))
-          if (message.user.email != fromEmail ) {
-            const fromKey = fromEmail.substring(0, fromEmail.indexOf("@"));
-            const toKey = toEmail.substring(0, toEmail.indexOf("@"));
-            firebasehandler.saveNewMessage(fromUser, fromKey, toKey)
+          if (message.user._id != fromKey ) {
+            firebasehandler.saveNewMessage(userStore, fromKey, toKey, sessionKey)
           }
         }
       })
@@ -92,14 +106,15 @@ export default class Chat extends React.Component {
   }
 
 	componentDidMount() {
-    //const fromUser = this.props.navigation.state.params.user.name+':'+this.props.navigation.state.params.toName
-    //asyncstore.deleteItem(fromUser)
-
+    //const userStore = this.props.navigation.state.params.user._id+':'+this.props.navigation.state.params.toUserID
+    //asyncstore.deleteItem(userStore)
+    //asyncstore.deleteItem('@Key:'+this.props.navigation.state.params.user._id+':'+this.props.navigation.state.params.toUserID)
     this.fetchData()
   }
+  // Before leaving this screen, stop listening to database
   componentWillUnmount() {
-    fromEmail = this.props.navigation.state.params.user.email
-    toEmail = this.props.navigation.state.params.toEmail
-    firebasehandler.stopMessageListening(fromEmail, toEmail)
+    fromKey = this.props.navigation.state.params.user._id
+    toKey = this.props.navigation.state.params.toUserID
+    firebasehandler.stopMessageListening(fromKey, toKey)
   }
 }

@@ -1,53 +1,55 @@
 import firebaseDB, {serverTimestamp} from './FirebaseDB'
 import * as asyncstore from '../AsyncStorage/Store'
+import CryptoJS from "crypto-js";
 
 const refUsers = firebaseDB.database().ref('UserProfiles');
 const refDirectMessages = firebaseDB.database().ref('DirectMessages');
 
-export const ListenForMessages = (fromEmail, toEmail, callback) => {
-  let fromKey = fromEmail.substring(0, fromEmail.indexOf("@"));
-  let toKey = toEmail.substring(0, toEmail.indexOf("@"));
+//Listen to messages in the given location on firebase database
+export const ListenForMessages = (fromKey, toKey, callback) => {
   refDirectMessages.child(fromKey).child(toKey).limitToLast(1).on('child_added', snapshot => callback(parseMessage(snapshot)));
 }
 
-export const remove = () => {
-  return refDirectMessages.remove()
-}
-
-export const setUserStatusOnline = (userName) => {
-  const refUsers = firebaseDB.database().ref('UserProfiles/'+userName+'/status');
+//Set user's status to 'online' on database
+export const setUserStatusOnline = (userID) => {
+  const refUsers = firebaseDB.database().ref('UserProfiles/'+userID+'/status');
   refUsers.set('Online')
+  return refUsers
 }
-
-export const setUserStatusOffline = (userName) => {
-  const refUsers = firebaseDB.database().ref('UserProfiles/'+userName+'/status');
+//Set user's status to 'offline' on database
+export const setUserStatusOffline = (userID) => {
+  const refUsers = firebaseDB.database().ref('UserProfiles/'+userID+'/status');
   refUsers.set('Offline')
 }
 
-export const readData = (fromUser, fromEmail, toEmail, callback) => {
-  let fromKey = fromEmail.substring(0, fromEmail.indexOf("@"));
-  let toKey = toEmail.substring(0, toEmail.indexOf("@"));
-
-  asyncstore.retrieveItem(fromUser).then(messageArray => {
-    
+//readData locally and compare messages with firebase database, retrieve new items if required
+export const readData = (userStore, fromKey, toKey, sessionKey, callback) => {
+  asyncstore.retrieveItem(userStore).then(messageArray => { 
     refDirectMessages.child(fromKey).child(toKey).limitToLast(1).once('value', lastMessage => {
       var lastfbMessageCreationTime = 0
       lastMessage.forEach(theMessage=>{lastfbMessageCreationTime = parseMessage(theMessage).createdAt})
-
       //If firebase has items store but local storage doesn't
       if (messageArray == null && lastMessage.toJSON() != null) {
-        //console.log('fetch all items')
         refDirectMessages.child(fromKey).child(toKey).once('value', fetchedMessages => {
           var newMessageArray = new Array()
           fetchedMessages.forEach(message => {
-            newMessageArray.push(parseMessage(message))
+            const theNewMessage = parseMessage(message)
+            const decrypted = CryptoJS.AES.decrypt(theNewMessage.text.toString(), sessionKey.toString())
+            const plainText = decrypted.toString(CryptoJS.enc.Utf8)
+
+            const newMessageDecrypted = {
+              _id: theNewMessage._id,
+              createdAt: theNewMessage.createdAt,
+              text: plainText,
+              user: theNewMessage.user,
+            }
+            newMessageArray.push(newMessageDecrypted)
           })
-          asyncstore.storeItem(fromUser, newMessageArray)
+          asyncstore.storeItem(userStore, newMessageArray)
           callback(newMessageArray)
         })
       }
       else if (messageArray == null && lastMessage.toJSON() == null) {
-        //console.log("nothing")
         return callback([])
       }
       //If local message does not match the retrieved item, then download latest files
@@ -56,22 +58,31 @@ export const readData = (fromUser, fromEmail, toEmail, callback) => {
         refDirectMessages.child(fromKey).child(toKey).orderByChild('createdAt').startAt(messageArray[messageArray.length-1].createdAt ).once('value').then(newMessages => {
           newMessages.forEach(message => {
             if (parseMessage(message).createdAt != messageArray[messageArray.length-1].createdAt){
-              messageArray.push(parseMessage(message))
+              const theNewMessage = parseMessage(message)
+              const decrypted = CryptoJS.AES.decrypt(theNewMessage.text.toString(), sessionKey.toString())
+              const plainText = decrypted.toString(CryptoJS.enc.Utf8)
+
+              const newMessageDecrypted = {
+                _id: theNewMessage._id,
+                createdAt: theNewMessage.createdAt,
+                text: plainText,
+                user: theNewMessage.user,
+              }
+              messageArray.push(newMessageDecrypted)
             }
           })
-          asyncstore.storeItem(fromUser, messageArray)
+          asyncstore.storeItem(userStore, messageArray)
           callback(messageArray)
         })
       } 
       else{
-        //console.log('happy days')
         return callback(messageArray)
       }
     })
   })
 }
 
-
+//Parse message snapshot into javascript object
 const parseMessage = (snapshot) => {
   const { createdAt, text, user } = snapshot.val();
   const { key: _id } = snapshot;
@@ -84,113 +95,135 @@ const parseMessage = (snapshot) => {
   return message;
 };
 
+//Get the list of users.
 export const getUsers = (callback) => {
   refUsers.once('value', snapshot => callback(parseUsers(snapshot)));
 }
 
+//Listen for any updates in user's online status
 export const listenToUserStatus = (callback) => {
   refUsers.on('child_changed', snapshot => callback(updateUserStatus(snapshot)))
 }
 
+//Stop updating user status
 export const stopListeningToUserStatus = () => {
   refUsers.off()
 }
 
+//Create a connection with a user by pushing an initial message to the user's database location
+export const setConnection = (ref, message) => {
+  firebaseDB.database().ref(ref).set(message)
+  return firebaseDB.database().ref(ref)
+}
+
+//Send a request to the database
+export const pushRequestConnection = (ref, value) => {
+  firebaseDB.database().ref(ref).push( {request : value})
+}
+
+//Send payload to database
+export const pushPayloadConnection = (ref, payload) => {
+  firebaseDB.database().ref(ref).push({payload: payload})
+}
+
+//Retrieve all users as an array of javascript objects
 const parseUsers = snapshot => {
   var users = new Array();
   snapshot.forEach(function(childSnapshot) {
-    const {name, email, status } = childSnapshot.val()
+    const {name, email, status, _id} = childSnapshot.val()
 
     const user = {
-      key: email,
+      key: _id,
       name,
       email,
       status,
+      _id
     }
 
     users.push(user)
   })
   return users;
 };
-
+//Retrieve new user status and return the snapshot as a javascript object
 const updateUserStatus = snapshot => {
-  const { name, email, status } = snapshot.val();
+  const { name, email, status, _id } = snapshot.val();
   const user = {
-    key: email,
+    key: _id,
     name,
     email,
     status,
+    _id
   }
   return user
 }
 
+//Push the message to firebase database and store the message locally
 export var sendDirect = async(messages) => {
+  const { toUserID, userStore, text, user, sessionKey} = messages[0]
+  var cipherText = CryptoJS.AES.encrypt(text, sessionKey.toString()).toString()
 
-  for (let i = 0; i < messages.length; i++) {
-
-    const { fromUser, text, user, toEmail } = messages[i]
-
-    fromKey = user.email.substring(0, user.email.indexOf("@"));
-    toKey = toEmail.substring(0, toEmail.indexOf("@"));
-    
-    const message = {
-      text,
-      user,
-      createdAt: serverTimestamp,
-    };
-
-    try {
-      await refDirectMessages.child(fromKey).child(toKey).push(message);
-      await refDirectMessages.child(toKey).child(fromKey).push(message);
-    } catch (error) {
-      console.log(error.message);
-    }
-
-    saveNewMessage(fromUser, fromKey, toKey, message)
+  const uploadMessage ={
+    text: cipherText,
+    user,
+    createdAt: serverTimestamp,
   }
+
+  try {
+    await refDirectMessages.child(user._id).child(toUserID).push(uploadMessage);
+    await refDirectMessages.child(toUserID).child(user._id).push(uploadMessage);
+  } catch (error) {
+    console.log(error.message);
+  }
+
+  saveNewMessage(userStore, user._id, toUserID, sessionKey)
 };
 
-export const saveNewMessage =(fromUser, fromKey, toKey) => {
-  asyncstore.retrieveItem(fromUser).then(messageArray => {
+//Store the message to local store accordingly
+export const saveNewMessage =(userStore, fromKey, toKey, sessionKey) => {
+  asyncstore.retrieveItem(userStore).then(messageArray => {
     refDirectMessages.child(fromKey).child(toKey).limitToLast(1).once('value').then(newMessage =>{
+
+      var theNewMessage
+      newMessage.forEach(nMessage => {
+        theNewMessage = parseMessage(nMessage)
+      })
+
+      var decrypted = CryptoJS.AES.decrypt(theNewMessage.text.toString(), sessionKey.toString())
+      var plainText = decrypted.toString(CryptoJS.enc.Utf8)
+
+      const newMessageDecrypted = {
+        _id: theNewMessage._id,
+        createdAt: theNewMessage.createdAt,
+        text: plainText,
+        user: theNewMessage.user,
+      }
+
       if (messageArray == null) {
-        //console.log('create new store')
-        newMessageArray = new Array()
-        newMessage.forEach(message => {
-          newMessageArray.push(parseMessage(message))
-        })
-        asyncstore.storeItem(fromUser, newMessageArray)
+        asyncstore.storeItem(userStore, [newMessageDecrypted])
       } else {
-        //console.log('store new message')
-        newMessage.forEach(nMessage => {
-          messageArray.push(parseMessage(nMessage))
-        })
-        asyncstore.storeItem(fromUser, messageArray)
+        messageArray.push(newMessageDecrypted)
+        asyncstore.storeItem(userStore, messageArray)
       }
     })
   })
 }
 
-
-
-export const stopMessageListening = (fromEmail) => {
-  let fromKey = fromEmail.substring(0, fromEmail.indexOf("@"));
-  let toKey = toEmail.substring(0, toEmail.indexOf("@"));
+//Stop listening to direct message of this user.
+export const stopMessageListening = (fromKey, toKey) => {
   refDirectMessages.child(fromKey).child(toKey).off();
 }
 
+//Retrieve current user's user id from firebase server
 export const uid = () => {
   return firebaseDB.auth().currentUser.uid;
 }
 
+//Retrieve current user's display name from firebase server
 export const userName = () => {
   return firebaseDB.auth().currentUser.displayName
 }
 
+//Retrieve current user's email from firebase server
 export const userEmail = () => {
   return firebaseDB.auth().currentUser.email
-}
-
-function newFunction() {
-  console.log('stop');
 }

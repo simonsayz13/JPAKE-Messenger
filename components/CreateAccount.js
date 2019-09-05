@@ -17,9 +17,6 @@ export default class CreateAccount extends React.Component {
   };
 
   onPressCreate = async () => {
-
-    console.log('create account... email:' + this.state.email);
-
     try {
       const user = {
         name: this.state.name,
@@ -27,10 +24,15 @@ export default class CreateAccount extends React.Component {
         password: this.state.password,
       };
 
-      await firebaseAuth.signup(user);
+      var response = await firebaseAuth.signup(user);
 
+      if (response == true) {
+        alert("Congratulations, your account has been setup")
+        this.props.navigation.navigate('Login');
+      }
     } catch ({ message }) {
       console.log('create account failed. catch error:' + message);
+      return
     }
   };
 
@@ -79,8 +81,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    justifyContent: 'center',
-    padding:50
+    padding:50,
+    marginTop: 88
   },
 
   mainheader: {

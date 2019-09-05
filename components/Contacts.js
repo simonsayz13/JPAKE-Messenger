@@ -1,7 +1,10 @@
 import React from 'react';
-import { View, FlatList, YellowBox, AsyncStorage } from 'react-native';
+import { View, FlatList, YellowBox, Alert} from 'react-native';
+import {HeaderBackButton} from 'react-navigation'
 import { ListItem, SearchBar } from "react-native-elements"
 import * as firebaseHandler from '../Firebase/FirebaseHandler'
+import * as asyncstore from '../AsyncStorage/Store'
+
 
 export default class Contacts extends React.Component {
 
@@ -14,9 +17,15 @@ export default class Contacts extends React.Component {
     }
   }
 
-  static navigationOptions = {
-    title: 'Contact List',
-  }
+  static navigationOptions = ({ navigation }) => ({
+    title: 'Users',
+    headerLeft: (
+      <HeaderBackButton
+        title="Contacts"
+        onPress={() => navigation.navigate('Home')}
+      />
+    ),
+  });
 
   get user() {
   	return {
@@ -24,31 +33,36 @@ export default class Contacts extends React.Component {
   		name: firebaseHandler.userName(),
       email: firebaseHandler.userEmail(),
       avatar: '',
-
   	}
   }
 
-  onPressItem = (item) => {
-      this.props.navigation.navigate('Chat', {
-        user: this.user,
-        toName: item.name,
-        toEmail: item.email.toLowerCase(),
+  onPressItem = async (item) => {
+    asyncstore.retrieveItem('@Key:'+this.user._id+':'+item._id).then(key=>{
+      if (key != null){
+        this.props.navigation.navigate('Chat',{
+          user: this.user,
+          toUserName: item.name,
+          toUserID: item._id,
+          sessionKey: key.toString()
+        })
+      }
+      else if (key == null && item.status == 'Online') {
+        firebaseHandler.setConnection('OnlineUsers/'+item._id+'/Connection/', {_id: this.user._id, name: this.user.name, email: this.user.email, activity:[]})
+        this.props.navigation.navigate('EncryptionSplash',{
+          connectionURL: 'OnlineUsers/'+item._id+'/Connection',
+          status: 0,
+          user: this.user,
+          toUserID: item._id,
+          toUserName: item.name,
+        })
+      }
+      else if (key == null && item.status == 'Offline') {
+        Alert.alert('Encrypted Session Required!', item.name+' must be online to establish initial authentication')
+      }
     })
-
-
-    // if (item.status == 'online') {
-    //   const fromUser = {...this.user, toname:item.name, toemail: item.email.toLowerCase()}
-    //   this.props.navigation.navigate('Chat', {
-    //     user: fromUser,
-    //     toEmail: item.email.toLowerCase(),
-    //   })
-    // }
-    // else {
-    //   alert(item.name+' is offline!')
-    // }
   }
 
-  searchFilterFunction = text => {
+  searchFilter = text => {
     if (text == '') {
       this.setState({dataSource: this.state.fullData, search: ''})
     }
@@ -80,34 +94,12 @@ export default class Contacts extends React.Component {
   }
 
   updateUserStatus = user => {
-
     for(var i = 0; i<this.state.fullData.length; i++){
       if (user.email == this.state.fullData[i].email) {
         this.state.fullData[i].status = user.status
       }
     }
     this.setState({dataSource: this.state.fullData})
-  }
-
-
-  
-  retireveData = async () => {
-    try {
-      const name = await AsyncStorage.getItem('@MyStore:key')
-      console.log(name)
-    } catch (error){
-      console.log(error)
-    }
-  }
-
-  deleteUserId = async () => {
-    try {
-      await AsyncStorage.removeItem('@MyStore:name');
-      await AsyncStorage.removeItem('@MyStore:key');
-    } catch (error) {
-      // Error retrieving data
-      console.log(error.message);
-    }
   }
 
   //Render search bar
@@ -118,7 +110,7 @@ export default class Contacts extends React.Component {
         lightTheme
         round
         placeholder="Search"
-        onChangeText={text => this.searchFilterFunction(text)}
+        onChangeText={text => this.searchFilter(text)}
         autoCorrect={false}
         value={search}
       />
@@ -137,37 +129,37 @@ export default class Contacts extends React.Component {
     );
   };
 
+ 
+
 	render() {
     return (
-      <FlatList
-        extraData={this.state}
-        data={this.state.dataSource}
-        renderItem={({item}) => 
-          <ListItem
-            roundAvatar
-            title={item.name}
-            subtitle={item.email}
-            onPress={() => this.onPressItem(item)}
-            badge={{ value: item.status, containerStyle: { backgroundColor: 'black' } ,textStyle: { color: 'white' }}}
-            titleStyle={{ color: 'black', fontWeight: 'bold' }}
-            subtitleStyle={{ color: 'black' }}
-            chevron
-          />
-        }
-        ListHeaderComponent={this.renderHeader}
-        ListFooterComponent={this.renderSeparator}
-        ItemSeparatorComponent={this.renderSeparator}
-      />
+      <View>
+        <FlatList
+          extraData={this.state}
+          data={this.state.dataSource}
+          renderItem={({item}) => 
+            <ListItem
+              roundAvatar
+              title={item.name}
+              subtitle={item.email}
+              onPress={() => this.onPressItem(item)}
+              badge={{ value: item.status, containerStyle: { backgroundColor: 'black' } ,textStyle: { color: 'white' }}}
+              titleStyle={{ color: 'black', fontWeight: 'bold' }}
+              subtitleStyle={{ color: 'black' }}
+              chevron
+            />
+          }
+          ListHeaderComponent={this.renderHeader}
+          ListFooterComponent={this.renderSeparator}
+          ItemSeparatorComponent={this.renderSeparator}
+        />
+    </View>
     )
   }
 
   componentDidMount() {
     firebaseHandler.getUsers(users => {this.createUserList(users)})
     firebaseHandler.listenToUserStatus(updatedUsers => {this.updateUserStatus(updatedUsers)})
-
-    //this.retireveData()
-    //this.deleteUserId()
-    //firebaseHandler.remove()
   }
 
   componentWillUnmount() {

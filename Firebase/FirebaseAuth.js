@@ -1,34 +1,38 @@
-import firebaseDB, { serverTimestamp } from './FirebaseDB';
+import firebaseDB from './FirebaseDB';
 
 const refUsers = firebaseDB.database().ref('UserProfiles');
 
 export const login = (email, password, success_callback, failed_callback) => {
-  const login_status = firebaseDB.auth().signInWithEmailAndPassword(email, password).then(success_callback, failed_callback);
-}
-
-export const observeStatus = () => {
-	firebaseDB.auth().onAuthStateChanged(this.onAuthStateChanged);
+  firebaseDB.auth().signInWithEmailAndPassword(email, password).then(success_callback, failed_callback);
 }
 
 //Function to create an account through firebase
 export const signup = (user) => {
+
+  //Prompt name must be longer than 2 characters
+  if(user.name.length<3){
+    alert("Please enter a name with at least 3 characters")
+    return
+  }
+  //Prompt password must be longer than 5 characters
   if(user.password.length<6)
   {
     alert("Please enter at least 6 characters")
     return
   }
-
-  const profile = {
-    name: user.name,
-    email: user.email,
-    status: 'offline'
-  }
-
+  
   firebaseDB.auth().createUserWithEmailAndPassword(user.email, user.password).then(function() {
     var userf = firebaseDB.auth().currentUser;
     userf.updateProfile({ displayName: user.name})
-    addUserProfile(profile)
-    alert("Congratulations, your account has been setup")
+
+    let profile = {
+      _id: userf.uid,
+      name: user.name,
+      email: user.email,
+      status: 'Offline',
+    }
+    
+    addUserProfile(profile, userf.uid)
 
   }).catch(function(error) {
     // Handle Errors here.
@@ -37,35 +41,24 @@ export const signup = (user) => {
     // [START_EXCLUDE]
     if (errorCode == 'auth/weak-password') {
       alert('The password is too weak.');
+      return false
     } else {
       alert(errorMessage);
-      return
+      return false
+      
     }
     console.log(error);
     // [END_EXCLUDE])
   })
+  return true
 }
 
-export const onAuthStateChanged = (user) => {
-  if (!user) {
-    try {
-      firebaseDB.auth().signInAnonymously();
-    } catch ({ message }) {
-      console.log("Failed: " + message)
-    }
-  }
-  else {
-  	console.log("Reusing auth")
-  }
-};
-
-export const onLogout = (success) => {
+export const onLogout = (signoutSuccess) => {
   firebaseDB.auth().signOut().then(function() {
     alert("Successfully signed out!")
-    console.log("Sign-out successful.");
-    success
+    signoutSuccess
   }).catch(function(error) {
-    console.log("An error happened when signing out");
+    console.log("An error happened when signing out: "+error);
   });
 }
 
@@ -73,7 +66,6 @@ export const userName = () => {
   return firebaseDB.auth().currentUser.displayName
 }
 
-export const addUserProfile = (user) => {
-  let key = user.email.substring(0, user.email.indexOf("@"));
-  refUsers.child(key).set(user);
+export const addUserProfile = (user, _id) => {
+  refUsers.child(_id).set(user);
 }

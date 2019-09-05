@@ -4,7 +4,6 @@ import { Container, Form, Input, Item, Button} from 'native-base'
 import { Icon } from 'react-native-elements'
 import * as firebaseAuth from '../Firebase/FirebaseAuth'
 import _ from 'lodash';
-
 import logo from '../assets/logo.png'
 
 export default class Login extends React.Component {
@@ -13,7 +12,7 @@ export default class Login extends React.Component {
   };
 
   constructor(props) {
-
+    super(props)
     //Ignore setting timer warning on android
     YellowBox.ignoreWarnings(['Setting a timer']);
     const _console = _.clone(console);
@@ -22,23 +21,21 @@ export default class Login extends React.Component {
         _console.warn(message);
       }
     };
-
-
-    super(props)
-
     this.state=({
-      email: 'simon13@gmail.com',
-      password: '123456',
+      email: '',
+      password: '',
       avatar: '',
     })
   }
 
+  // Function that move the user to the home screen upon successfully login onto the server
   loginSuccess = () => {
     this.props.navigation.navigate('Home');
   };
   
+  // Function handle failure to login by prompting user login has failed
   loginFailed = () => {
-    alert('Login failed. Please tried again.');
+    alert('Login failed. Please try again.');
   };
 
   render() {
@@ -56,7 +53,6 @@ export default class Login extends React.Component {
             <Input
               autocorrect={false}
               placeholder='Email'
-              //value = 'Simon13@gmail.com'
               round
               onChangeText={(email) => this.setState({email})}/>
           </Item>
@@ -65,7 +61,6 @@ export default class Login extends React.Component {
             <Icon name='lock' type='material' color='#00aced'/>
             <Input
             placeholder='Password'
-            //value = '123456'
             secureTextEntry={true}
             onChangeText={(password) => this.setState({ password })}/>
           </Item>

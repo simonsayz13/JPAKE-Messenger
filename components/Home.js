@@ -1,9 +1,9 @@
 import React from 'react'
-import { StyleSheet, Text, View, YellowBox, Image, AsyncStorage } from 'react-native'
+import { StyleSheet, Text, View, YellowBox, Image, Alert } from 'react-native'
 import { Container, Form, Label, Button} from 'native-base'
 import * as firebaseAuth from '../Firebase/FirebaseAuth'
 import * as firebaseHandler from '../Firebase/FirebaseHandler'
-
+import firebaseDB from '../Firebase/FirebaseDB'
 import logo from '../assets/logo.png'
 
 export default class Home extends React.Component {
@@ -14,25 +14,31 @@ export default class Home extends React.Component {
   constructor(props) {
     super(props)
     YellowBox.ignoreWarnings(['Setting a timer']);
+    this.updateFirebase = this.updateFirebase.bind(this)
+    this.state = {
+      alertPresent: false
+    }
+  }
+
+  get user() {
+  	return {
+      _id: firebaseHandler.uid(),
+  		name: firebaseHandler.userName(),
+      email: firebaseHandler.userEmail(),
+      avatar: '',
+  	}
   }
 
   signoutSuccess = () => {
-    let email = firebaseHandler.userEmail()
-    let capitalisedEmail = email.charAt(0).toUpperCase()+email.slice(1)
-    let userName = capitalisedEmail.substring(0, capitalisedEmail.indexOf("@"))
-    firebaseHandler.setUserStatusOffline(userName)
+    let userID = firebaseHandler.uid()
+    firebaseHandler.setUserStatusOffline(userID)
+    
     this.props.navigation.navigate('Login');
+
+    var onlineUsersRef = firebaseDB.database().ref('OnlineUsers/'+userID+'/')
+    onlineUsersRef.remove()
   }
 
-  storeData = async () => {
-    try {
-      await AsyncStorage.setItem('@MyStore:name', 'simon')
-      console.log('done')
-    } catch (error) {
-      console.log(error)
-    }
-  }
-  
   render() {
     return (
       <Container style={styles.container}>
@@ -57,21 +63,59 @@ export default class Home extends React.Component {
         onPress={() => firebaseAuth.onLogout(this.signoutSuccess())}>
           <Text style={{color: 'white'}}>Sign out</Text>
         </Button>
-
-
         </Form>
       </Container>
     );
   }
 
-  componentDidMount() {
-    //this.storeData()
-    let email = firebaseHandler.userEmail()
-    let capitalisedEmail = email.charAt(0).toUpperCase()+email.slice(1)
-    let userName = capitalisedEmail.substring(0, capitalisedEmail.indexOf("@"))
-    firebaseHandler.setUserStatusOnline(userName)
+  updateFirebase() {
+    let userID = firebaseHandler.uid()
+    var con = firebaseHandler.setUserStatusOnline(userID)
+    var connectedRef = firebaseDB.database().ref('.info/connected');
+    var onlineUsersRef = firebaseDB.database().ref('OnlineUsers/'+userID+'/')
+
+    connectedRef.on('value', function(snap) {
+      if (snap.val() === true) {
+        con.onDisconnect().set('Offline')
+        onlineUsersRef.onDisconnect().remove()
+        onlineUsersRef.remove()
+      }
+    });
+
+    const { navigate } = this.props.navigation
+    onlineUsersRef.limitToLast(1).on('child_added', function (snap) {
+      const {name, _id} = snap.val()
+      Alert.alert(
+        'Incoming Connection',
+        name +' wants a secure chat.',
+        [
+          {
+            text: 'Decline',
+            onPress: () => {
+              firebaseHandler.pushRequestConnection('OnlineUsers/'+userID+'/Connection/', false)
+              firebaseDB.database().ref('OnlineUsers/'+userID+'/Connection/').remove()
+            },
+            style: 'cancel',
+          },
+          {text: 'Accept', onPress: () => {
+            firebaseHandler.pushRequestConnection('OnlineUsers/'+userID+'/Connection/', true)
+            navigate('EncryptionSplash', {
+              connectionURL: 'OnlineUsers/'+userID+'/Connection/',
+              status: 1,
+              user: this.user,
+              toUserID: _id,
+              toUserName: name
+            })
+          }},
+        ],
+        {cancelable: false},
+      );
+    }.bind(this));
   }
 
+  componentDidMount() {
+    this.updateFirebase()
+  }
 }
 
 const styles = StyleSheet.create({
