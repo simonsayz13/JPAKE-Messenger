@@ -1,0 +1,35 @@
+--------------------------------------------------------------
+Hardware requirement(Running the application on a real device)
+--------------------------------------------------------------
+• Smartphone running iOS or Android
+• Install "Expo" app from Google or Apple app store
+
+--------------------------------------------------------------
+Software requirement (Running the application on a simulator)
+--------------------------------------------------------------
+• Android Studio (Android)
+• Xcode (iOS)
+
+--------------------------------------------------------------
+Installation
+--------------------------------------------------------------
+1) Install Node.js from https://nodejs.org/en/
+2) Install Expo by going to terminal and enter "npm install expo-cli"
+3) Now you're ready to build and run the project!
+
+--------------------------------------------------------------
+Building and running the project
+--------------------------------------------------------------
+1) In terminal, navigate to the project's root folder
+2) Type "expo start", you should see the metro bundler running with a QR code
+3) Now you can either run the application on simulator or real device
+4) Simulator: 
+	• Open up iOS or Android simulator from Xcode or Android Studio
+	• When the simulator fully loads into main menu, go to the terminal running the metro bundler, and type "i" for iOS and "a" for Android. Upon entering "i" or "a", the application should automatically build and run on the simulator
+5) Real device:
+	• (Android) - Open the "Expo" app, and go to the scan QR code function and scan the QR code in metro bundler,
+	the application should automatically build and run.
+	• (iOS) - Open up the default iOS camera app, point the camera at the QR code, a push notification should
+	appear and prompt you to open the Expo app, click on the push notification and the application will automatically
+	build and run.
+
